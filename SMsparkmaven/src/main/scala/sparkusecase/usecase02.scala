@@ -21,7 +21,7 @@ object usecase02 {
     .option("dbtable","tblorderdata")
     .option("driver","com.mysql.cj.jdbc.Driver").load()
   
-    df.write.mode("append").saveAsTable("tblorderhive1")
+    df.write.mode("append").saveAsTable("hdfs:/user/hive/warehouse/tblorderhive1")
     
   }
   
