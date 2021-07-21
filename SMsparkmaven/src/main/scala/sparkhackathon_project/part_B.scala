@@ -22,11 +22,12 @@ object part_B {
     sc.setLogLevel("ERROR")
     spark.conf.set("spark.sql.shuffle.partitions",4)
     
+    
     // 21. Create structuretype
     val insurance = StructType(List(
           StructField("IssuerId",IntegerType,true), 
           StructField("IssuerId2",IntegerType,true), 
-          StructField("BusinessDate",StringType,true), 
+          StructField("BusinessDate",DateType,true), 
           StructField("StateCode",StringType,true), 
           StructField("SourceName",StringType,true),
           StructField("NetworkName",StringType,true),
@@ -57,28 +58,29 @@ object part_B {
             .option("dateFormat","yyy-mm-dd")
             .option("inferSchema",true)
             .load("hdfs://localhost:54310/user/hduser/sparkhack2/insuranceinfo2.csv")
-            //dfin2.show()
+            dfin2.show()
             
 // 23. Apply the below DSL functions
             
     // a. Rename the fields StateCode and SourceName as stcd and srcnm respectively.
     val dfrename = dfin1.select(col("IssuerId"),col("IssuerId2"),col("BusinessDate"),col("StateCode").alias("stcd")
+    ,col("SourceName").alias("srcnm"),col("NetworkName"),col("NetworkURL"),col("custnum"),col("MarketCoverage")
     ,col("DentalOnlyPlan"))
     val dfrename1 = dfin2.select(col("IssuerId"),col("IssuerId2"),col("BusinessDate"),col("StateCode").alias("stcd")
         ,col("SourceName").alias("srcnm"),col("NetworkName"),col("NetworkURL"),col("custnum"),col("MarketCoverage")
         ,col("DentalOnlyPlan"))
         
     // b. Concat IssuerId,IssuerId2 as issueridcomposite and make it as a new field 
-    val dfconcat =dfin1.select(concat(col("IssuerId"),lit(" "),col("IssuerId2")).as("issueridcomposite"))
-    val dfconcat1 =dfin2.select(concat(col("IssuerId"),lit(" "),col("IssuerId2")).as("issueridcomposite"))
+    val dfconcat =dfrename.select(col("*"),concat(col("IssuerId"),lit(" "),col("IssuerId2")).as("issueridcomposite"))
+    val dfconcat1 =dfrename1.select(col("*"),concat(col("IssuerId"),lit(" "),col("IssuerId2")).as("issueridcomposite"))
 
     // c. Remove DentalOnlyPlan column
-    val dfdrop = dfin1.drop("DentalOnlyPlan")
-    val dfdrop1 = dfin2.drop("DentalOnlyPlan")
+    val dfdrop = dfconcat.drop("DentalOnlyPlan")
+    val dfdrop1 = dfconcat1.drop("DentalOnlyPlan")
 
     // d. Add columns that should show the current system date and timestamp with the 
-    val dfcurdatets = dfin1.withColumn("sysdt", current_date()).withColumn("systs", current_timestamp())
-    val dfcurdatets1 = dfin2.withColumn("sysdt", current_date()).withColumn("systs", current_timestamp())
+    val dfcurdatets = dfdrop.withColumn("sysdt", current_date()).withColumn("systs", current_timestamp())
+    val dfcurdatets1 = dfdrop1.withColumn("sysdt", current_date()).withColumn("systs", current_timestamp())
         
     // i,ii,iii,iv usecases
     /*println("==== i. Get All column names=====")
@@ -90,21 +92,23 @@ object part_B {
     dfin1.select(integerColumnsre.map(x=>col(x.name)):_*).show(10)*/
     
     // 24. Remove the rows
-    val dfnull1 = dfin1.filter(col("IssuerId").isNotNull)
+    val dfnull1 = dfcurdatets.filter(col("IssuerId").isNotNull)
+    //dfnull1.show()
     //println(dfnull1.count())
-    val dfnull2 = dfin2.filter(col("IssuerId").isNotNull)
+    val dfnull2 = dfcurdatets.filter(col("IssuerId").isNotNull)
+    //dfnull2.show()
     //println(dfnull2.count())
 
-    //val dfnull1 = dfin1.na.drop()
-    dfnull1.show()
+    //val dfnull1 = dfcurdatets.na.drop()
+    //dfnull1.show(100)
     //println(dfnull1.count())
-    //val dfnull2 = dfin2.na.drop()
-    dfnull2.show()
+    //val dfnull2 = dfcurdatets.na.drop()
+    //dfnull2.show(100)
     //println(dfnull2.count())
     
     val dfinmerge = dfnull1.union(dfnull2).distinct()
-    //println("merged after removing nulls :")
-    //dfinmerge.show(10)
+    println("merged after removing nulls :")
+    dfinmerge.show(400)
 
    // 26. Import the package, instantiate the class and register the method
     val dfim = new allmethods
@@ -112,7 +116,7 @@ object part_B {
     spark.udf.register("dfinsu",dfim.remspecialchar _)
     
     // 27. Call the above udf in the DSL by passing NetworkName column as an argument
-    //val dfnetwork = dfinmerge.withColumn("Ntwrkname",dfinsu(col("NetworkName"))).show()
+    val dfnetwork = dfinmerge.withColumn("Ntwrkname",dfinsu(col("NetworkName")))
     
     // 28. Save the DF in JSON into HDFS with
     //dfnetwork.write.format("json").mode("overwrite").save("hdfs://localhost:54310/user/hduser/sparkhack2output/insunetjson")
@@ -131,11 +135,13 @@ object part_B {
     //custstates.foreach(println)
     
     // 32. Split the above data into 2 RDDs
+    //println("========custs data=========")
     val custsplit = custstates.map(x => x.split(","))
     val custfilter = custsplit.filter(x => (x.length == 5))
     val custmap = custfilter.map(x => (x(0).toInt,x(1),x(2),x(3).toInt,x(4)))
     //custmap.foreach(println)
-    println("===================")
+    
+    //println("=========state data==========")
     val statesfilter = custsplit.filter(x => (x.length == 2))
     val statemap = statesfilter.map(x => (x(0),x(1)))
     //statemap.foreach(println)
@@ -155,22 +161,22 @@ object part_B {
     //custfilterdf.show()
     //custfilterdf.printSchema()
     
-    val statesfilterdf = statemap.toDF("statecode","description")
+    
+    val statesfilterdf = statemap.toDF("stated","statedesc")
     //statesfilterdf.show()
     //statesfilterdf.printSchema()
     
-    custfilterdf.filter("prof is not null")
-    custfilterdf.where("prof is null")
-    custfilterdf.na.drop()
+    
+    val cnull = custfilterdf.na.drop()
+    //println(cnull.count())
     println("=============")
-    statesfilterdf.filter("statecode is not null")
-    statesfilterdf.where("statecode is null")
-    statesfilterdf.na.drop()
+    val snull = statesfilterdf.na.drop()
+    //println(snull.count())
     
     // Use SQL Queries:
     // 35. Register the above step 34 DFs as temporary views
-    custfilterdf.createOrReplaceTempView("custview")
-    statesfilterdf.createOrReplaceTempView("statesview")
+    cnull.createOrReplaceTempView("custview")
+    snull.createOrReplaceTempView("statesview")
     
     // 36. Register the DF generated in step 23.d as a tempview
     //dfinmerge.createOrReplaceTempView("insureview")
@@ -181,24 +187,78 @@ object part_B {
     
     // 38. Write an SQL query
     dfinmerge.createOrReplaceTempView("insureview")
+    //spark.conf.set("spark.sql.shuffle.partitions",4)
+    //println(dfinmerge.groupBy("IssuerId").count().rdd.partitions.length)
+    
     // a. Pass NetworkName
-    spark.sql("""select IssuerId,IssuerId2,BusinessDate,StateCode,SourceName,remspecialcharudf(NetworkName) 
-      as cleannetworkname,NetworkURL,custnum,MarketCoverage,DentalOnlyPlan from insureview""").show()
-    // b. Add current date, current timestamp
-    spark.sql("""select IssuerId,IssuerId2,BusinessDate,StateCode,SourceName,NetworkName,NetworkURL,custnum,
-    MarketCoverage,DentalOnlyPlan,current_date() as curdt,current_timestamp() as curts from insureview""").show()
-    // c. Extract the year and month from the businessdate
-    //spark.sql("select IssuerId,IssuerId2,convert(varchar(10),convert(BusinessDate,getdate(),23),23),StateCode,SourceName,NetworkName,NetworkURL,custnum,MarketCoverage,DentalOnlyPlan from insureview").show()
-    //spark.sql("select if (NetworkURL = 'http') elseif (NetworkURL = 'https') print 'http non secured : condition is true' else print 'noprotocol: condition is false' from insureview")
-    /*dfinmerge.select(col("*"), (when(col("NetworkURL").startsWith("http:")=== true,"http non secured")
-      .when(col("NetworkURL").startsWith("https:") === true,"http secured"))
-      .otherwise("noprotocol").alias("protocol")).show()*/
-      spark.sql("""select case when substring(NetworkURL,1,5) = 'http:' then 'http non secure' when substring 
-      (NetworkURL,1,5) = 'https' then 'http secure' else 'noprotocol' end as protocol from insureview""").show()
+    val NN = spark.sql("""select IssuerId,IssuerId2,BusinessDate,stcd,srcnm,NetworkName,remspecialcharudf(NetworkName) 
+      as cleannetworkname,NetworkURL,custnum,MarketCoverage,issueridcomposite from insureview""")
+      //NN.show()
       
-      spark.sql("""select i.cleannetworkname,i.curdt,i.curts,i.protocol,c.age,c.prof,s.statecode from statesview s 
-        inner join insureview i on (s.statecode = i.StateCode) 
-        join custview c on i.custnum=c.custid""").show()
+    // b. Add current date, current timestamp
+    val DT = NN.withColumn("curdt",current_date()).withColumn("curts",current_timestamp())
+    DT.show()
+    
+    println("// c. Extract the year and month from the businessdate")
+    val CYM = DT.select(col("*"),to_date(col("BusinessDate"), "MM/dd/yyyy").alias("Business_Date"))
+    CYM.show()
+    val CYM1 = CYM.select(col("*"),year(col("Business_Date")).as("yr"),month(col("Business_Date")).as("mth"))
+    CYM1.show()
+    val YM = CYM1.drop("BusinessDate")
+    YM.show()
+    
+    // d. Extract from the protocol 
+    //val pro = spark.sql("""select case when substring(NetworkURL,1,5) = 'http:' then 'http non secure' when substring 
+      //(NetworkURL,1,5) = 'https' then 'http secure' else 'noprotocol' end as protocol from insureview""")
+    val pro = YM.select(col("*"),(when(col("NetworkURL").startsWith("http:")=== true,"http non secured")
+      .when(col("NetworkURL").startsWith("https:") === true,"http secured"))
+      .otherwise("noprotocol").alias("protocol"))
+    pro.show()
+    
+    // e. Display all the columns  
+    pro.createOrReplaceTempView("insureview1")
+    val dfs = spark.sql("select * from insureview1")
+    println("top of tempview : ")
+    dfs.show()
+   
+    /*val joinfile = spark.sql("""select i.IssuerId,i.IssuerId2,i.Business_Date,i.yr,i.mth,i.stcd,i.srcnm,i.NetworkName,
+      i.cleannetworkname,i.NetworkURL,i.custnum,i.MarketCoverage,i.issueridcomposite,i.curdt,i.curts,i.protocol,
+      c.age,c.prof,s.stated from insureview1 i inner join statesview s on i.stcd = s.stated join 
+      custview c on i.custnum=c.custid""")
+      joinfile.show()*/
+      
+    val joinfile1 = spark.sql("""select * from insureview1 i inner join statesview s on i.stcd = s.stated join
+      custview c on i.custnum = c.custid""")
+    joinfile1.show()
+     
+    // 39. Store DF in Parquet formats into HDFS location
+    //joinfile.coalesce(1).write.format("parquet").mode("overwrite").save("hdfs://localhost:54310/user/hduser/sparkhack2output/joinparquet")
+    //println("Saved parquet into HDFS")
+    
+    // 40. Write an SQL query
+    joinfile1.createOrReplaceTempView("insurinfo")
+    spark.sql("select * from insurinfo").show()
+    val insuagg = spark.sql("""select avg(age) as avgage,count(statedesc) as count,prof from insurinfo 
+      order by prof desc""")
+    /*val insuagg = joinfile1.groupBy("protocol")
+                        .agg(avg(col("age"))
+                        .alias("Avgage"))
+                        .groupby(count(col("statedesc")))
+                        .orderBy(count(col("protocol").desc))
+                        .show()*/
+    // 41. Store the DF into MYSQL table
+    insuagg.write.format("jdbc").option("url","jdbc:mysql://localhost/custdb")
+    .mode("overwrite")
+    .option("user","root")
+    .option("password","Root123$")
+    .option("dbtable","insureaggregated")
+    .option("driver","com.mysql.cj.jdbc.Driver").save()
+    
+    
+    
+    
+    
+    
      
   }
   

@@ -60,6 +60,39 @@ object part_B4 {
     custfilterdf.createOrReplaceTempView("custview")
     statesfilterdf.createOrReplaceTempView("statesview")
     
+    // 38. Write an SQL query
+    //dfinmerge.createOrReplaceTempView("insureview")
+    
+    // a. Pass NetworkName
+    val NN = spark.sql("""select IssuerId,IssuerId2,BusinessDate,StateCode,SourceName,remspecialcharudf(NetworkName) 
+      as cleannetworkname,NetworkURL,custnum,MarketCoverage,DentalOnlyPlan from insureview""")
+      
+    // b. Add current date, current timestamp
+    val DT = NN.withColumn("curdt",current_date()).withColumn("curts",current_timestamp())
+    
+    // c. Extract the year and month from the businessdate
+    //spark.sql("select IssuerId,IssuerId2,convert(varchar(10),convert(BusinessDate,getdate(),23),23),StateCode,SourceName,NetworkName,NetworkURL,custnum,MarketCoverage,DentalOnlyPlan from insureview").show()
+    
+    // d. Extract from the protocol 
+    //val pro = spark.sql("""select case when substring(NetworkURL,1,5) = 'http:' then 'http non secure' when substring 
+      //(NetworkURL,1,5) = 'https' then 'http secure' else 'noprotocol' end as protocol from insureview""")
+     val pro = DT.select(col("*"), (when(col("NetworkURL").startsWith("http:")=== true,"http non secured")
+      .when(col("NetworkURL").startsWith("https:") === true,"http secured"))
+      .otherwise("noprotocol").alias("protocol"))
+      
+    // e. Display all the columns  
+    /*val joinfile = spark.sql("""select i.cleannetworkname,i.curdt,i.curts,i.protocol,c.age,c.prof,s.statecode from statesview s 
+        inner join insureview i on (s.statecode = i.StateCode) 
+        join custview c on i.custnum=c.custid""")*/
+        
+        /*val joinfile = spark.sql("""select i.cleannetworkname,i.curdt,i.curts,i.protocol,c.age,c.prof,s.statecode from statesview s 
+        inner join insureview i on (s.statecode = i.StateCode) 
+        join custview c on i.custnum=c.custid""")*/
+    
+    //val df1 = spark.sql("""select t.txnid,c.custid,c.age,c.profession,t.city,t.state from txns t 
+                           //inner join custs c on t.custid=c.custid""")
+        
+    
   }
   
 }
